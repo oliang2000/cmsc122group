@@ -1,3 +1,18 @@
+# User input: a group name
+
+# Q1: what are the people talking about RIGHT NOW and how are they FEELING?
+# get hottest # of posts
+# extract key words from (title + post + comments) to generate HOT WORDS/PHRASES
+# generate a WORDMAP based on the hot words
+
+# Q2: how are people's feelings changing with time?
+# extract as many recent posts as possible (list object)
+# use the post utc to get change over time
+# get sentiments/keywords/..
+
+#Q3: maybe compare different groups?
+
+
 import praw
 from collections import Counter
 import csv
@@ -58,6 +73,11 @@ def analyze_posts(allposts):
     '''
     Inputs: list of tuple
     '''
+    #for submission in reddit.subreddit('all').hot(limit=25)
+    #.top(), .new()
+    #"Best" is the highest upvote to downvote ratio
+    #"top" is the most upvotes regardless of downvotes, 
+    #and "hot" is the most upvotes recently.
     l_words_title = []
     l_post_sentiment = []
     for title, post in allposts:
