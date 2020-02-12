@@ -134,7 +134,7 @@ def get_all_comments(comment, n_max_comments): ########
     '''
     comments = []
     if isinstance(comment, praw.models.Comment):
-        comments = [comment.body]
+        comments = [(comment.body, comment.score)]
         replies = comment.replies
         if len(comment.replies) == 0:
             return comments
