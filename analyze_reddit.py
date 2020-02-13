@@ -12,6 +12,11 @@
 
 #Q3: maybe compare different groups?
 
+#analyze how different users compare to each other (words + sentiment change with time)
+#find duplicates or just find people that are generally similar?
+#subset users with similar interests, common issues that people get happy/sad about
+#use analysis to see if people is republican/democratic
+#compare two users of contrasting group, their sentiment with time
 
 import praw
 from collections import Counter
@@ -46,9 +51,14 @@ WORD_IRGNORE = ['', 'i', 'have', 'was', 'it', 'you', 'people', 'your', 'like',
                     '-', "it's", "gonna", 'i’ve', 'probably', 'could', 'can']
 
 
+
 def get_words(post):
     '''
     Get words from a paragraph.
+    Inputs: 
+        post(string): a paragraph of words
+    Returns:
+        a list of words, containing letters, numbers and '
     '''
     words = []
     words_list = post.split(" ")
@@ -66,21 +76,30 @@ def get_group_content(groupname, num_of_posts, n_max_comments):
     '''
     Get submissions from a group.
 
+    Inputs:
+        groupname(String): name of the group
+        num_of_posts(int): number of posts to get
+        n_max_comments(int): maximum limit of number of comments 
+            to get from each post.
+
     .hot(), .top(), .new()
     "top" is the most upvotes regardless of downvotes
     "hot" is the most upvotes recently
 
-    Returns: a list of tuple
+    Returns: a list of submission objects.
     '''
     l = []
     i = 0
-    for submission in reddit.subreddit(groupname).top(limit = num_of_posts):
-        i += 1
-        print(i)
-        l.append(submission)
-        #l.append((submission.title, submission.selftext))
-        analyze_comments(submission, submission.title, submission.id, n_max_comments)
+    for submission in reddit.subreddit(groupname).hot(limit = num_of_posts):  #new
+        l.append(submission) #submission.title, submission.selftext
     return l
+
+
+def write_posts_to_cvs(name):
+    with open(name + '.csv', 'w', newline='') as csvfile:
+        spamreader = csv.reader(csvfile, delimiter=' ', quotechar=',')
+        for post in posts:
+            print(post.title, post.selftext, ' '.join(get_all_comments(post)))
 
 
 def analyze_posts(allposts):
@@ -129,7 +148,8 @@ def get_all_comments_wrapper(post, n_max_comments):
         comments += get_all_comments(comment, n_max_comments)
     return comments
 
-def get_all_comments(comment, n_max_comments): ########
+
+def get_all_comments(comment, n_max_comments): ########max comments
     '''
     '''
     comments = []
@@ -139,33 +159,60 @@ def get_all_comments(comment, n_max_comments): ########
         if len(comment.replies) == 0:
             return comments
         for comment in replies:
-            comments += get_all_comments(comment, n_max_comments - len(comments))
+            comments += get_all_comments(comment, n_max_comments)
     elif isinstance(comment, praw.models.MoreComments):
         for c in comment.comments():
-            comments += get_all_comments(c, n_max_comments - len(comments))
+            comments += get_all_comments(c, n_max_comments)
     return comments
 
 
-def analyze_comments(post, title, filename, n_max_comments):
+def analyze_comments(posts, n_max_comments):
     '''
-    check whether people are happy or sad in the comments section
+    Check whether people are happy or sad in the comments section of a group
     Input:
-        post(a submmission object)
+        posts(list): a list of submission objects
         title(string): post title, used for title of the histogram
         filename(string): post id, used as name for .png file
         n_max_comments
     Returns:
-        list of sentiment score
+        list of list of sentiment score
     Outputs:
         a histogram of sentiment scores 
     '''
-    all_comments = get_all_comments_wrapper(post, n_max_comments)
-    all_com_sent = [calculate_sentiment(i) for i in all_comments]
-    plt.hist(all_com_sent)
-    plt.title('Post:' + title)
-    plt.savefig(filename + '.png', bbox_inches='tight')
-    plt.close()
-    return all_com_sent
+    sent = []
+    time = []
+    for post in posts:
+        all_com_sent = []
+        all_comments = get_all_comments_wrapper(post, n_max_comments)
+        all_com_sent = [calculate_sentiment(i) for i, j in all_comments]
+        # plt.hist(all_com_sent)
+        # plt.title('Post:' + post.title)
+        # plt.savefig(post.id + '.png', bbox_inches='tight')
+        # plt.close()
+        sent.append(all_com_sent)
+        time.append(post.created_utc)
+    return (sent, time)
+
+
+def get_time_change(sent, time):
+    sent_avg = np.array([])
+    time = np.array(time)
+    for s in sent:
+        if len(s) == 0:
+            sent_avg = np.append(sent_avg, None)
+        else:
+            sent_avg = np.append(sent_avg, np.average(s)) # weigh by popularity
+    sent_avg_mod = sent_avg[sent_avg != None]
+    time_mod = time[sent_avg != None]
+    plt.clf()
+    plt.figure(figsize=(20,2))
+    axes = plt.gca()
+    axes.set_ylim([-1,1])
+    plt.plot(time_mod, sent_avg_mod, 'o') #, '-o'
+    plt.title('ElizabethWarren')
+    plt.savefig('ElizabethWarren' + '.png', bbox_inches='tight', dpi = 300)
+    return (sent_avg_mod, time_mod)
+
 
 
 #posts = get_group_content('china', 200) 
