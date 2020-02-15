@@ -95,12 +95,27 @@ def get_group_content(groupname, num_of_posts, n_max_comments):
     return l
 
 
-def write_posts_to_cvs(name):
-    with open(name + '.csv', 'w', newline='') as csvfile:
-        spamreader = csv.reader(csvfile, delimiter=' ', quotechar=',')
+def write_posts_to_cvs(posts, name, n_max_comments):
+    with open(name + '.csv', 'w', newline='') as file:
+        writer = csv.writer(file, delimiter=' ', quotechar='|')
+        writer.writerow(["title", "post", "all comments"])
         for post in posts:
-            print(post.title, post.selftext, ' '.join(get_all_comments(post)))
+            writer.writerow([post.title, post.selftext, \
+                '\n\n\n'.join([i for i, j in get_all_comments_wrapper(post, n_max_comments)])])
 
+
+def read_posts_from_cvs(name):
+    '''
+    Returns a list of tuples containing (title, post, comments)
+    '''
+    l = []
+    with open(name + '.csv', newline='') as csvfile:
+        reader = csv.reader(csvfile, delimiter=' ', quotechar='|')
+        next(reader, None)
+        i = 0
+        for row in reader:
+            l.append((row[0], row[1], row[2]))
+    return l
 
 def analyze_posts(allposts):
     '''
