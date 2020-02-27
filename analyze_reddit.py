@@ -1,243 +1,177 @@
-# User input: a group name
+#https://github.com/pushshift/api
+#https://github.com/dmarx/psaw
 
-# Q1: what are the people talking about RIGHT NOW and how are they FEELING?
-# get hottest # of posts
-# extract key words from (title + post + comments) to generate HOT WORDS/PHRASES
-# generate a WORDMAP based on the hot words
-
-# Q2: how are people's feelings changing with time?
-# extract as many recent posts as possible (list object)
-# use the post utc to get change over time
-# get sentiments/keywords/..
-
-#Q3: maybe compare different groups?
-
-#analyze how different users compare to each other (words + sentiment change with time)
-#find duplicates or just find people that are generally similar?
-#subset users with similar interests, common issues that people get happy/sad about
-#use analysis to see if people is republican/democratic
-#compare two users of contrasting group, their sentiment with time
-
-import praw
-from collections import Counter
-import csv
-import collections
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-import re
-import statistics
-import passwords
-from wordcloud import WordCloud, STOPWORDS 
+from psaw import PushshiftAPI
+import datetime as dt
 import matplotlib.pyplot as plt
 import numpy as np
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import pandas as pd
 
 ANALYZER = SentimentIntensityAnalyzer()
+api = PushshiftAPI()
 
-reddit = praw.Reddit(client_id = passwords.CLIENT_ID, 
-                    client_secret = passwords.CLIENT_SECRET,
-                    password = passwords.PASSWORD, 
-                    user_agent = 'USERAGENT',
-                    username = passwords.USERNAME)
-
-WORD_IRGNORE = ['', 'i', 'have', 'was', 'it', 'you', 'people', 'your', 'like',
-                    'because', 'would', 'all', 'if', 'what', 'who', 'my',
-                    'me', 'think', 'it', 'do', 'me', 'about', 'ever',
-                    'a', 'also', 'an', 'and', 'are', 'as', 'at', 'be',
-                    'but', 'by', 'course', 'for', 'from', 'how', 'i',
-                    'in', 'include', 'is', 'not', 'of', 'want', "you're",
-                    'on', 'or', 'so', 'such', 'that', 'the', 'their', 
-                    'this', 'through', 'to', 'we', 'were', 'which', 'will', 
-                    'with', 'yet', 'https', 'put', 'they','get', 'why', 'even', 
-                    'though', 'done', 'i’m', 'going', 'go', 'when', 'person', 'some', 'feel',
-                    '-', "it's", "gonna", 'i’ve', 'probably', 'could', 'can']
-
-
-
-def get_words(post):
+def get_posts(start_date, end_date, n, subreddit):
     '''
-    Get words from a paragraph.
-    Inputs: 
-        post(string): a paragraph of words
-    Returns:
-        a list of words, containing letters, numbers and '
-    '''
-    words = []
-    words_list = post.split(" ")
-    for word in words_list:
-        word = word.lower()
-        word = re.search("[a-z0-9\-'’]+", word)
-        if word != None:
-            word = word.group(0)
-            if (word not in WORD_IRGNORE) and (word not in words):
-                words.append(word)
-    return words
-
-
-def get_group_content(groupname, num_of_posts, n_max_comments):
-    '''
-    Get submissions from a group.
-
+    Extract posts from a subreddit with criteria.
     Inputs:
-        groupname(String): name of the group
-        num_of_posts(int): number of posts to get
-        n_max_comments(int): maximum limit of number of comments 
-            to get from each post.
-
-    .hot(), .top(), .new()
-    "top" is the most upvotes regardless of downvotes
-    "hot" is the most upvotes recently
-
-    Returns: a list of submission objects.
+        start_date, end_date (lists): two lists of three elements contaiining
+          year, month, date of limit to extract the posts
+        n (int): limit on number of posts to extract
+        subreddit (string): name of subresddit to extract
+    Returns: a list of submissions
+    Sample use: test.get_posts([2020, 1,1],[2020, 1,2], 10, 'china')
     '''
-    l = []
-    i = 0
-    for submission in reddit.subreddit(groupname).hot(limit = num_of_posts):  #new
-        l.append(submission) #submission.title, submission.selftext
-    return l
-
-
-def write_posts_to_cvs(posts, name, n_max_comments):
-    with open(name + '.csv', 'w', newline='') as file:
-        writer = csv.writer(file, delimiter=' ', quotechar='|')
-        writer.writerow(["title", "post", "all comments"])
-        for post in posts:
-            writer.writerow([post.title, post.selftext, \
-                '\n\n\n'.join([i for i, j in get_all_comments_wrapper(post, n_max_comments)])])
-
-
-def read_posts_from_cvs(name):
-    '''
-    Returns a list of tuples containing (title, post, comments)
-    '''
-    l = []
-    with open(name + '.csv', newline='') as csvfile:
-        reader = csv.reader(csvfile, delimiter=' ', quotechar='|')
-        next(reader, None)
-        i = 0
-        for row in reader:
-            l.append((row[0], row[1], row[2]))
-    return l
-
-def analyze_posts(allposts):
-    '''
-    Inputs: list of tuple
-    '''
-
-    l_words_title = []
-    l_post_sentiment = []
-    for title, post in allposts:
-        l_words_title += get_words(title)
-        if post == '':
-            l_post_sentiment.append(None)
-        else:
-            l_post_sentiment.append(calculate_sentiment(post))
-    counter = collections.Counter(l_words_title)
-
-    #generate word cloud
-    wordcloud = WordCloud(stopwords = STOPWORDS, width = 1000, \
-        height = 500, background_color="white").generate_from_frequencies(counter)
-    plt.figure(figsize=(200,100))
-    plt.imshow(wordcloud)
-    plt.axis("off")
-    plt.savefig('yourfile.png', bbox_inches='tight')
-    plt.close()
-
-    print(counter.most_common(100))
-    print(statistics.mean(filter(None, l_post_sentiment)))
+    year1, month1, day1 = start_date
+    year2, month2, day2 = end_date
+    start_epoch = int(dt.datetime(year1, month1, day1).timestamp())
+    end_epoch = int(dt.datetime(year2, month2, day2).timestamp())
+    return list(api.search_submissions(before = end_epoch, after=start_epoch, \
+        subreddit = subreddit, filter=['title', 'author', 'selftext', 'subreddit'], limit = n))
 
 
 def calculate_sentiment(text):
     '''
-    Calculates sentiment of a paragraph.
-
-    Returns: int(between -1 and 1)
+    Calculates sentiment score of a string.
+    Inputs:
+        text(str): the text to be analyzed
+    Returns: an int between 1(very positive) and -1(vert negative)
     '''
     return ANALYZER.polarity_scores(text)['compound']
 
 
-def get_all_comments_wrapper(post, n_max_comments):
+def create_df(submissions):
     '''
-    Get all comments of a post.
+    Create a pandas dataframe from a list of submissions.
+    Inputs: 
+        submissions(list): a list of reddit submissions
+    Returns: a pandas dataframe with author, post title, post content, 
+      time the post was created (ymd, hour, minute, second) and sentiment 
+      score of the post
     '''
-    comments = []
-    for comment in post.comments:
-        comments += get_all_comments(comment, n_max_comments)
-    return comments
-
-
-def get_all_comments(comment, n_max_comments): ########max comments
-    '''
-    '''
-    comments = []
-    if isinstance(comment, praw.models.Comment):
-        comments = [(comment.body, comment.score)]
-        replies = comment.replies
-        if len(comment.replies) == 0:
-            return comments
-        for comment in replies:
-            comments += get_all_comments(comment, n_max_comments)
-    elif isinstance(comment, praw.models.MoreComments):
-        for c in comment.comments():
-            comments += get_all_comments(c, n_max_comments)
-    return comments
-
-
-def analyze_comments(posts, n_max_comments):
-    '''
-    Check whether people are happy or sad in the comments section of a group
-    Input:
-        posts(list): a list of submission objects
-        title(string): post title, used for title of the histogram
-        filename(string): post id, used as name for .png file
-        n_max_comments
-    Returns:
-        list of list of sentiment score
-    Outputs:
-        a histogram of sentiment scores 
-    '''
-    sent = []
-    time = []
-    for post in posts:
-        all_com_sent = []
-        all_comments = get_all_comments_wrapper(post, n_max_comments)
-        all_com_sent = [calculate_sentiment(i) for i, j in all_comments]
-        # plt.hist(all_com_sent)
-        # plt.title('Post:' + post.title)
-        # plt.savefig(post.id + '.png', bbox_inches='tight')
-        # plt.close()
-        sent.append(all_com_sent)
-        time.append(post.created_utc)
-    return (sent, time)
-
-
-def get_time_change(sent, time):
-    sent_avg = np.array([])
-    time = np.array(time)
-    for s in sent:
-        if len(s) == 0:
-            sent_avg = np.append(sent_avg, None)
+    l_author = []
+    l_title = []
+    l_selftext = []
+    l_time = []
+    l_sent = []
+    for sub in submissions:
+        l_title.append(sub.title)
+        l_author.append(sub.author)
+        l_time.append(sub.created_utc)
+        if hasattr(sub, 'selftext'):
+            l_selftext.append(sub.selftext)
+            l_sent.append(calculate_sentiment(sub.title + sub.selftext))
         else:
-            sent_avg = np.append(sent_avg, np.average(s)) # weigh by popularity
-    sent_avg_mod = sent_avg[sent_avg != None]
-    time_mod = time[sent_avg != None]
+            l_selftext.append('')
+            l_sent.append(calculate_sentiment(sub.title))
+
+    df = pd.DataFrame({'author': l_author, 'title': l_title, 'text': l_selftext, \
+        'epoch_time':l_time, 'sentiment_score': l_sent})
+    df['time'] = df.apply(lambda row: dt.datetime.fromtimestamp(row['epoch_time']), axis = 1)
+    ymd, hour, minute, second = \
+    zip(*[(d.strftime("%Y%m%d"), d.hour, d.minute, d.second) \
+        for d in df['time']])
+    df = df.assign(ymd = ymd, hour = hour, minute = minute, second = second)
+    return df
+
+
+def compare_group_sent(subreddits, start_date, end_date, n, plot_title):
+    '''
+    Compare sentiment scores vs. time for any number of subreddits.
+    Inputs:
+        subreddits(list): names of the subreddit groups
+        start_date, end_date (list): two lists of three elements contaiining
+          year, month, date of limit to extract the posts
+        n (int): limit on number of posts to extract
+        plot_title (str): name of plot, also filename of .png file
+    Returns:
+        a list of pandas DataFrame of all subreddits, with author, post title, 
+          post content, time the post was created (ymd, hour, minute, second) 
+          and sentiment score of the post.
+    Outputs:
+        plot_title.png file with scores vs. time for all subreddits
+    Sample use:  k = test.compare_group_sent(['SandersForPresident', 'Pete_Buttigieg'], 
+    [2020, 2,6], [2020, 2, 12], 50000, 'bernie_vs_pete')
+    '''
+    dfs = []
+    max_min_time = 0
+    for name in subreddits:
+        df = create_df(get_posts(start_date, end_date, n, name))
+        max_min_time = max(max_min_time, min(df['epoch_time']))
+        dfs.append(df)
     plt.clf()
-    plt.figure(figsize=(20,2))
-    axes = plt.gca()
-    axes.set_ylim([-1,1])
-    plt.plot(time_mod, sent_avg_mod, 'o') #, '-o'
-    plt.title('ElizabethWarren')
-    plt.savefig('ElizabethWarren' + '.png', bbox_inches='tight', dpi = 300)
-    return (sent_avg_mod, time_mod)
-
-
-
-#posts = get_group_content('china', 200) 
-#analyze_posts(posts)
-
-
-
+    i = 0
+    for df in dfs:
+        df = df[df['epoch_time']> max_min_time]
+        df_count = df.groupby('ymd', as_index=False)['sentiment_score'].mean()
+        plt.plot(df_count.ymd, df_count.sentiment_score, '-o', label = subreddits[i])
+        i += 1
+    plt.xticks(rotation=90)
+    plt.legend(loc='best')
+    plt.title(plot_title)
+    plt.savefig(plot_title + '.png', bbox_inches='tight', dpi = 300)
+    return dfs
 
 
 
 
+
+
+
+def analyze_users(dfs, groups, min_num_post = 10):
+    '''
+    Analyze users who post frequently in all groups.
+    '''
+
+    dfs[0] = dfs[0].add_suffix('_0')
+    all_groups = dfs[0]
+    i = 1
+    while i < len(dfs):
+        dfs[i] = dfs[i].add_suffix('_' + str(i))
+        all_groups = all_groups.merge(dfs[i], \
+            left_on = 'author_0',  right_on = 'author_' + str(i))
+        i += 1
+    s_count = all_groups.groupby('author_0').size()
+    df_count = pd.DataFrame({'author': s_count.index, 'num_post': s_count.values})
+    df_count = df_count.sort_values(by = 'num_post', ascending=False)
+    freq_authors = list(df_count[df_count['num_post'] >= min_num_post].author)
+    freq_authors.remove('[deleted]')
+    for author in freq_authors:
+        posts_from_author = all_groups[all_groups['author_0'] == author]
+        plt.clf()
+        i = 0
+        while i < len(dfs):
+            plt.plot(posts_from_author['ymd_' + str(i)], \
+                posts_from_author['sentiment_score_'+ str(i)], 'o', label = groups[i])
+            i += 1
+        plt.xticks(rotation=90)
+        plt.legend(loc='best')
+        plt.savefig(author + '.png', bbox_inches='tight', dpi = 300)
+
+
+def extreme(sent, threshold):
+    '''
+    '''
+    if (sent > threshold) or (sent < - threshold):
+        return True
+    return False
+
+
+def get_extreme_users(df, threshold):
+    '''
+    Analyze users who have strong emotions.....
+    '''
+    df["extreme"] = df.apply(lambda row: test.extreme(row.sentiment_score, threshold), axis = 1)
+    df_count = pd.DataFrame({'author': s.index, 'num_post': s.values})
+    df_count = df_count.sort_values(by = 'num_post', ascending=False)
+    freq_authors = list(df_count[df_count['num_post'] >= 5].author)
+    freq_authors.remove('[deleted]')
+    for author in freq_authors:
+        posts_from_author = df[df['author'] == author]
+        plt.clf()
+        plt.plot(posts_from_author.ymd, posts_from_author.sentiment_score, 'o')
+        plt.xticks(rotation=90)
+        plt.legend(loc='best')
+        plt.savefig(author + '.png', bbox_inches='tight', dpi = 300)
 
 
