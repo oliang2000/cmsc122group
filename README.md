@@ -1,2 +1,2 @@
 # cmsc122group
-This is CS122 project 
+This is a repository for CS122 project
